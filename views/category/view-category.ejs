@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title><%= title %></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <link rel="stylesheet" type="text/css" href="/vendors/styles/core.css" />
+    <link rel="stylesheet" type="text/css" href="/vendors/styles/icon-font.min.css" />
+    <link rel="stylesheet" type="text/css" href="/vendors/styles/style.css" />
+</head>
+<body class="header-white sidebar-light">
+    <%- include('../loader/loader.ejs') %>
+    <%- include('../partials/header.ejs') %>
+    <%- include('../partials/leftsidebar.ejs') %>
+    <div class="mobile-menu-overlay"></div>
+    <div class="main-container">
+        <div class="pd-ltr-20 xs-pd-20-10">
+            <div class="min-height-200px">
+                <div class="page-header">
+                    <div class="row align-items-center">
+                        <div class="col-md-6 col-sm-12">
+                            <div class="title"><h4>View Category</h4></div>
+                            <nav aria-label="breadcrumb" role="navigation">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item"><a href="/dashboard">Home</a></li>
+                                    <li class="breadcrumb-item active" aria-current="page">View Category</li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-md-6 col-sm-12 text-right">
+                            <a href="/categories/add" class="btn btn-primary">
+                                <i class="bi bi-plus-circle"></i> Add Category
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <% if (success) { %>
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <%= success %>
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                <% } %>
+                <% if (error) { %>
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <%= error %>
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                <% } %>
+
+                <div class="card-box mb-30">
+                    <div class="pd-20">
+                        <h4 class="text-blue h4">Category List</h4>
+                        <p class="mb-0">All category names are shown in table format.</p>
+                    </div>
+                    <div class="pb-20 table-responsive">
+                        <table class="table hover multiple-select-row data-table-export nowrap">
+                            <thead>
+                                <tr>
+                                    <th style="width: 80px;">No</th>
+                                    <th>Category Name</th>
+                                    <th style="width: 140px;" class="datatable-nosort">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% if (categories.length > 0) { %>
+                                    <% categories.forEach((categoryData, index) => { %>
+                                        <tr>
+                                            <td><%= index + 1 %></td>
+                                            <td>
+                                                <span class="badge badge-primary"><%= categoryData.category %></span>
+                                            </td>
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <a href="/categories/edit/<%= categoryData._id %>" class="btn btn-sm btn-outline-primary mr-2" title="Edit">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </a>
+                                                    <form action="/categories/delete/<%= categoryData._id %>" method="post" onsubmit="return confirm('Are you sure you want to delete this category?')" class="mb-0">
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <% }) %>
+                                <% } else { %>
+                                    <tr>
+                                        <td colspan="3" class="text-center pd-20">
+                                            <h5 class="mb-10">No category found</h5>
+                                            <p class="mb-15">Add your first category using the button below.</p>
+                                            <a href="/categories/add" class="btn btn-primary btn-sm">Add Category</a>
+                                        </td>
+                                    </tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <%- include('../partials/footer.ejs') %>
+        </div>
+    </div>
+    <script src="/vendors/scripts/core.js"></script>
+    <script src="/vendors/scripts/script.min.js"></script>
+    <script src="/vendors/scripts/process.js"></script>
+    <script src="/vendors/scripts/layout-settings.js"></script>
+</body>
+</html>
