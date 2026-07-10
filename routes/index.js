@@ -9,6 +9,8 @@ const {
     signIn,
     forgotPasswordPage,
     verifyForgotEmail,
+    verifyOtp,
+    resendOtp,
     resetPasswordPage,
     resetPassword,
     logout,
@@ -32,7 +34,9 @@ router.get("/signup", redirectIfLoggedIn, registerPage);
 router.post("/signup", signUp);
 router.get("/forgot-password", redirectIfLoggedIn, forgotPasswordPage);
 router.post("/forgot-password", redirectIfLoggedIn, verifyForgotEmail);
-router.get("/reset-password/:id", redirectIfLoggedIn, resetPasswordPage);
+router.post("/verify-otp", redirectIfLoggedIn, verifyOtp);
+router.post("/resend-otp", redirectIfLoggedIn, resendOtp);
+router.get("/reset-password/:identity", redirectIfLoggedIn, resetPasswordPage);
 router.post("/reset-password", redirectIfLoggedIn, resetPassword);
 router.get("/logout", requireAuth, logout);
 router.get("/change-password", requireAuth, changePasswordPage);

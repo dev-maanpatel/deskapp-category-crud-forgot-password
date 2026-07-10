@@ -18,6 +18,29 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true
         },
+        resetOtp: {
+            type: String,
+            default: ""
+        },
+        resetOtpExpiresAt: {
+            type: Date,
+            default: null
+        },
+        resetOtpResendAt: {
+            type: Date,
+            default: null
+        },
+        resetOtpIdentity: {
+            type: String,
+            default: null,
+            unique: true,
+            sparse: true,
+            index: true
+        },
+        resetOtpVerified: {
+            type: Boolean,
+            default: false
+        },
         profileImage: {
             type: String,
             trim: true,

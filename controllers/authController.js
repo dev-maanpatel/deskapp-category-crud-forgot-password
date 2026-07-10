@@ -2,6 +2,8 @@ const User = require("../models/userModel");
 const bcrypt = require("bcrypt");
 const passport = require("../middleware/passport");
 const mongoose = require("mongoose");
+const otpGenerator = require("otp-generator");
+const { randomUUID } = require("crypto");
 
 const isValidEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -108,12 +110,33 @@ const signIn = (req, res, next) => {
     })(req, res, next);
 };
 
-const forgotPasswordPage = (req, res) => {
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
+const OTP_RESEND_WAIT_MS = 30 * 1000;
+
+const createOtp = () => {
+    return otpGenerator.generate(6, {
+        digits: true,
+        upperCaseAlphabets: false,
+        lowerCaseAlphabets: false,
+        specialChars: false
+    });
+};
+
+const renderForgotPassword = (res, values = {}) => {
     return res.render("auth/forgot-password", {
         title: "DeskApp | Forgot Password",
-        error: null,
-        email: ""
+        error: values.error || null,
+        success: values.success || null,
+        email: values.email || "",
+        showOtpModal: Boolean(values.showOtpModal),
+        otpIdentity: values.otpIdentity || "",
+        otpExpiresAt: values.otpExpiresAt || null,
+        otpResendAt: values.otpResendAt || null
     });
+};
+
+const forgotPasswordPage = (req, res) => {
+    return renderForgotPassword(res);
 };
 
 const verifyForgotEmail = async (req, res) => {
@@ -122,16 +145,14 @@ const verifyForgotEmail = async (req, res) => {
         email = email ? email.toLowerCase().trim() : "";
 
         if (!email) {
-            return res.render("auth/forgot-password", {
-                title: "DeskApp | Forgot Password",
+            return renderForgotPassword(res, {
                 error: "Please enter your registered email address.",
                 email
             });
         }
 
         if (!isValidEmail(email)) {
-            return res.render("auth/forgot-password", {
-                title: "DeskApp | Forgot Password",
+            return renderForgotPassword(res, {
                 error: "Please enter a valid email address.",
                 email
             });
@@ -139,33 +160,173 @@ const verifyForgotEmail = async (req, res) => {
 
         const user = await User.findOne({ email });
         if (!user) {
-            return res.render("auth/forgot-password", {
-                title: "DeskApp | Forgot Password",
+            return renderForgotPassword(res, {
                 error: "This email is not registered. Please enter your registered email.",
                 email
             });
         }
 
-        return res.redirect(`/reset-password/${user._id}`);
+        const otp = createOtp();
+        const otpIdentity = randomUUID();
+        const currentTime = Date.now();
+        const otpExpiresAt = new Date(currentTime + OTP_EXPIRY_MS);
+        const otpResendAt = new Date(currentTime + OTP_RESEND_WAIT_MS);
+
+        user.resetOtp = String(otp);
+        user.resetOtpIdentity = String(otpIdentity);
+        user.resetOtpExpiresAt = otpExpiresAt;
+        user.resetOtpResendAt = otpResendAt;
+        user.resetOtpVerified = false;
+        await user.save();
+
+        console.log("========================================");
+        console.log(`Forgot password OTP for ${user.email}: ${otp}`);
+        console.log(`OTP unique identity: ${otpIdentity}`);
+        console.log(`OTP expires at: ${otpExpiresAt.toISOString()}`);
+        console.log("========================================");
+
+        return renderForgotPassword(res, {
+            success: "OTP generated successfully. Check the server console.",
+            email: user.email,
+            showOtpModal: true,
+            otpIdentity,
+            otpExpiresAt: otpExpiresAt.getTime(),
+            otpResendAt: otpResendAt.getTime()
+        });
     } catch (error) {
         console.error("DeskApp forgot password email check error", error);
-        return res.render("auth/forgot-password", {
-            title: "DeskApp | Forgot Password",
-            error: "Unable to check email. Please try again.",
+        return renderForgotPassword(res, {
+            error: "Unable to generate OTP. Please try again.",
             email: req.body.email || ""
+        });
+    }
+};
+
+const verifyOtp = async (req, res) => {
+    try {
+        let { otp, otpIdentity } = req.body;
+        otp = otp ? String(otp).trim() : "";
+        otpIdentity = otpIdentity ? String(otpIdentity).trim() : "";
+
+        const user = await User.findOne({ resetOtpIdentity: otpIdentity }).select(
+            "_id email resetOtp resetOtpExpiresAt resetOtpResendAt resetOtpIdentity resetOtpVerified"
+        );
+
+        if (!user) {
+            return renderForgotPassword(res, {
+                error: "Invalid OTP request. Please generate a new OTP."
+            });
+        }
+
+        const modalData = {
+            email: user.email,
+            showOtpModal: true,
+            otpIdentity: user.resetOtpIdentity,
+            otpExpiresAt: user.resetOtpExpiresAt ? user.resetOtpExpiresAt.getTime() : Date.now(),
+            otpResendAt: user.resetOtpResendAt ? user.resetOtpResendAt.getTime() : Date.now()
+        };
+
+        if (!otp || !/^\d{6}$/.test(otp)) {
+            return renderForgotPassword(res, {
+                ...modalData,
+                error: "Please enter a valid 6-digit OTP."
+            });
+        }
+
+        if (!user.resetOtpExpiresAt || Date.now() > user.resetOtpExpiresAt.getTime()) {
+            return renderForgotPassword(res, {
+                ...modalData,
+                error: "OTP has expired. Please resend OTP."
+            });
+        }
+
+        if (String(user.resetOtp) !== otp) {
+            return renderForgotPassword(res, {
+                ...modalData,
+                error: "Incorrect OTP. Please try again."
+            });
+        }
+
+        user.resetOtpVerified = true;
+        user.resetOtp = "";
+        user.resetOtpExpiresAt = null;
+        user.resetOtpResendAt = null;
+        await user.save();
+
+        return res.redirect(`/reset-password/${encodeURIComponent(user.resetOtpIdentity)}`);
+    } catch (error) {
+        console.error("DeskApp OTP verification error", error);
+        return renderForgotPassword(res, {
+            error: "Unable to verify OTP. Please try again."
+        });
+    }
+};
+
+const resendOtp = async (req, res) => {
+    try {
+        const otpIdentity = req.body.otpIdentity ? String(req.body.otpIdentity).trim() : "";
+        const user = await User.findOne({ resetOtpIdentity: otpIdentity });
+
+        if (!user) {
+            return renderForgotPassword(res, {
+                error: "OTP session not found. Please enter your email again."
+            });
+        }
+
+        if (user.resetOtpResendAt && Date.now() < user.resetOtpResendAt.getTime()) {
+            return renderForgotPassword(res, {
+                error: "Please wait until the 30-second timer finishes before resending OTP.",
+                email: user.email,
+                showOtpModal: true,
+                otpIdentity: user.resetOtpIdentity,
+                otpExpiresAt: user.resetOtpExpiresAt ? user.resetOtpExpiresAt.getTime() : null,
+                otpResendAt: user.resetOtpResendAt.getTime()
+            });
+        }
+
+        const otp = createOtp();
+        const newIdentity = randomUUID();
+        const currentTime = Date.now();
+        const otpExpiresAt = new Date(currentTime + OTP_EXPIRY_MS);
+        const otpResendAt = new Date(currentTime + OTP_RESEND_WAIT_MS);
+
+        user.resetOtp = String(otp);
+        user.resetOtpIdentity = String(newIdentity);
+        user.resetOtpExpiresAt = otpExpiresAt;
+        user.resetOtpResendAt = otpResendAt;
+        user.resetOtpVerified = false;
+        await user.save();
+
+        console.log("========================================");
+        console.log(`Resent forgot password OTP for ${user.email}: ${otp}`);
+        console.log(`New OTP unique identity: ${newIdentity}`);
+        console.log(`OTP expires at: ${otpExpiresAt.toISOString()}`);
+        console.log("========================================");
+
+        return renderForgotPassword(res, {
+            success: "New OTP generated successfully. Check the server console.",
+            email: user.email,
+            showOtpModal: true,
+            otpIdentity: newIdentity,
+            otpExpiresAt: otpExpiresAt.getTime(),
+            otpResendAt: otpResendAt.getTime()
+        });
+    } catch (error) {
+        console.error("DeskApp resend OTP error", error);
+        return renderForgotPassword(res, {
+            error: "Unable to resend OTP. Please try again."
         });
     }
 };
 
 const resetPasswordPage = async (req, res) => {
     try {
-        const { id } = req.params;
+        const resetIdentity = req.params.identity ? String(req.params.identity).trim() : "";
+        const user = await User.findOne({
+            resetOtpIdentity: resetIdentity,
+            resetOtpVerified: true
+        }).select("_id email resetOtpIdentity resetOtpVerified");
 
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-            return res.redirect("/forgot-password");
-        }
-
-        const user = await User.findById(id).select("_id email");
         if (!user) {
             return res.redirect("/forgot-password");
         }
@@ -173,7 +334,7 @@ const resetPasswordPage = async (req, res) => {
         return res.render("auth/reset-password", {
             title: "DeskApp | Reset Password",
             error: null,
-            userId: user._id,
+            resetIdentity: user.resetOtpIdentity,
             email: user.email
         });
     } catch (error) {
@@ -184,54 +345,54 @@ const resetPasswordPage = async (req, res) => {
 
 const resetPassword = async (req, res) => {
     try {
-        let { userId, newPassword, confirmPassword } = req.body;
+        let { resetIdentity, newPassword, confirmPassword } = req.body;
 
-        userId = userId ? userId.trim() : "";
+        resetIdentity = resetIdentity ? String(resetIdentity).trim() : "";
         newPassword = newPassword ? newPassword.trim() : "";
         confirmPassword = confirmPassword ? confirmPassword.trim() : "";
 
-        const renderReset = (message, email = "") => {
-            return res.render("auth/reset-password", {
-                title: "DeskApp | Reset Password",
-                error: message,
-                userId,
-                email
-            });
-        };
+        const user = await User.findOne({
+            resetOtpIdentity: resetIdentity,
+            resetOtpVerified: true
+        }).select("_id email password resetOtp resetOtpExpiresAt resetOtpResendAt resetOtpIdentity resetOtpVerified");
 
-        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-            return res.redirect("/forgot-password");
-        }
-
-        const user = await User.findById(userId).select("_id email password");
         if (!user) {
             return res.redirect("/forgot-password");
         }
 
+        const renderReset = (message) => {
+            return res.render("auth/reset-password", {
+                title: "DeskApp | Reset Password",
+                error: message,
+                resetIdentity,
+                email: user.email
+            });
+        };
+
         if (!newPassword || !confirmPassword) {
-            return renderReset("Please enter new password and confirm password.", user.email);
+            return renderReset("Please enter new password and confirm password.");
         }
 
         if (!isValidPassword(newPassword)) {
-            return renderReset(passwordMessage, user.email);
+            return renderReset(passwordMessage);
         }
 
         if (newPassword !== confirmPassword) {
-            return renderReset("New password and confirm password do not match.", user.email);
+            return renderReset("New password and confirm password do not match.");
         }
 
         user.password = await bcrypt.hash(newPassword, 12);
+        user.resetOtp = "";
+        user.resetOtpExpiresAt = null;
+        user.resetOtpResendAt = null;
+        user.resetOtpIdentity = null;
+        user.resetOtpVerified = false;
         await user.save();
 
         return res.redirect("/signin?success=Password reset successfully. Please login with your new password.");
     } catch (error) {
         console.error("DeskApp reset password error", error);
-        return res.render("auth/reset-password", {
-            title: "DeskApp | Reset Password",
-            error: "Unable to reset password. Please try again.",
-            userId: req.body.userId || "",
-            email: ""
-        });
+        return res.redirect("/forgot-password");
     }
 };
 
@@ -334,6 +495,8 @@ module.exports = {
     signIn,
     forgotPasswordPage,
     verifyForgotEmail,
+    verifyOtp,
+    resendOtp,
     resetPasswordPage,
     resetPassword,
     logout,
