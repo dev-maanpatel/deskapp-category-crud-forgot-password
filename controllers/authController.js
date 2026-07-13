@@ -181,8 +181,6 @@ const verifyForgotEmail = async (req, res) => {
 
         console.log("========================================");
         console.log(`Forgot password OTP for ${user.email}: ${otp}`);
-        console.log(`OTP unique identity: ${otpIdentity}`);
-        console.log(`OTP expires at: ${otpExpiresAt.toISOString()}`);
         console.log("========================================");
 
         return renderForgotPassword(res, {
@@ -299,8 +297,6 @@ const resendOtp = async (req, res) => {
 
         console.log("========================================");
         console.log(`Resent forgot password OTP for ${user.email}: ${otp}`);
-        console.log(`New OTP unique identity: ${newIdentity}`);
-        console.log(`OTP expires at: ${otpExpiresAt.toISOString()}`);
         console.log("========================================");
 
         return renderForgotPassword(res, {

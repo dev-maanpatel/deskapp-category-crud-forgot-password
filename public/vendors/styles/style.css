@@ -628,7 +628,11 @@ p {
 
 .border-radius-100,
 .user-info-dropdown .dropdown-toggle .user-icon img {
-    border-radius: 100%
+    border-radius: 100%;
+}
+.user-icon img{
+    width: 100%;
+    height: 100%;
 }
 
 .box-shadow {
